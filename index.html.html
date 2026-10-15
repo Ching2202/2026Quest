@@ -1,0 +1,671 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>任務小幫手 - 國中資源班課堂任務管理系統</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Alpine.js -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        sage: {
+                            50: '#F4F7F5',
+                            100: '#E2EBE6',
+                            500: '#7A9A8B',
+                            600: '#5F7B6E',
+                            700: '#4A6155'
+                        },
+                        cream: '#FDFBF7',
+                        warm: '#F9F6F0'
+                    },
+                    fontFamily: {
+                        sans: ['"Noto Sans TC"', 'sans-serif']
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        [x-cloak] { display: none !important; }
+    </style>
+</head>
+<body class="bg-cream text-gray-800 font-sans min-h-screen flex flex-col" x-data="taskApp()">
+
+    <!-- 頂部導覽列 -->
+    <header class="bg-sage-600 text-white shadow-md sticky top-0 z-50">
+        <div class="max-w-6xl mx-auto px-4 py-3 flex justify-between items-center">
+            <div class="flex items-center space-x-3 cursor-pointer" @click="currentView = 'home'">
+                <span class="text-2xl">🌱</span>
+                <h1 class="text-xl font-bold tracking-wide">任務小幫手</h1>
+            </div>
+            <div class="flex items-center space-x-3">
+                <span class="text-xs bg-sage-700 px-2.5 py-1 rounded-full text-sage-100" x-text="isLoggedIn ? '👨‍🏫 教師模式 (已登入)' : '👀 學生 / 訪客模式'"></span>
+                <template x-if="!isLoggedIn">
+                    <button @click="loginModal = true" class="bg-white text-sage-700 px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-sage-50 transition shadow-sm">
+                        教師登入
+                    </button>
+                </template>
+                <template x-if="isLoggedIn">
+                    <button @click="logout()" class="bg-rose-500 text-white px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-rose-600 transition shadow-sm">
+                        登出
+                    </button>
+                </template>
+            </div>
+        </div>
+    </header>
+
+    <!-- 狀態通知 Toast -->
+    <div x-show="toast.show" x-transition class="fixed bottom-5 right-5 z-50 bg-gray-800 text-white px-4 py-3 rounded-xl shadow-lg flex items-center space-x-2" x-cloak>
+        <span x-text="toast.icon"></span>
+        <span class="text-sm" x-text="toast.message"></span>
+    </div>
+
+    <!-- 主要內容區 -->
+    <main class="flex-grow max-w-6xl w-full mx-auto px-4 py-6">
+
+        <!-- 1. 首頁 / 任務總覽 -->
+        <section x-show="currentView === 'home'" x-transition>
+            <!-- 數據總覽卡片 -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+                <div class="bg-white p-5 rounded-2xl shadow-sm border border-sage-100 flex items-center justify-between">
+                    <div>
+                        <p class="text-sm text-gray-500 font-medium">總任務數</p>
+                        <p class="text-3xl font-bold text-sage-700 mt-1" x-text="tasks.length">0</p>
+                    </div>
+                    <div class="w-12 h-12 bg-sage-50 rounded-xl flex items-center justify-center text-2xl">📚</div>
+                </div>
+                <div class="bg-white p-5 rounded-2xl shadow-sm border border-sage-100 flex items-center justify-between">
+                    <div>
+                        <p class="text-sm text-gray-500 font-medium">待完成項目總計</p>
+                        <p class="text-3xl font-bold text-amber-600 mt-1" x-text="totalPendingCount">0</p>
+                    </div>
+                    <div class="w-12 h-12 bg-amber-50 rounded-xl flex items-center justify-center text-2xl">⏳</div>
+                </div>
+                <div class="bg-white p-5 rounded-2xl shadow-sm border border-sage-100 flex items-center justify-between">
+                    <div>
+                        <p class="text-sm text-gray-500 font-medium">整體完成率</p>
+                        <p class="text-3xl font-bold text-sage-600 mt-1" x-text="overallCompletionRate + '%'">0%</p>
+                    </div>
+                    <div class="w-12 h-12 bg-sage-50 rounded-xl flex items-center justify-center text-2xl">📈</div>
+                </div>
+            </div>
+
+            <!-- 模式選擇入口 -->
+            <h2 class="text-lg font-bold text-gray-700 mb-4">請選擇查看模式</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                <div @click="currentView = 'task-view'" class="bg-white p-6 rounded-2xl shadow-sm border border-sage-200 hover:border-sage-500 hover:shadow-md transition cursor-pointer group">
+                    <div class="flex items-center space-x-4">
+                        <div class="w-14 h-14 bg-sage-100 text-sage-700 rounded-2xl flex items-center justify-center text-2xl group-hover:bg-sage-500 group-hover:text-white transition">📂</div>
+                        <div>
+                            <h3 class="text-lg font-bold text-gray-800 group-hover:text-sage-700 transition">指定任務查看模式</h3>
+                            <p class="text-sm text-gray-500 mt-1">從特定任務出發，以月曆方格卡片快速檢視與勾選全班進度。</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div @click="currentView = 'student-view'" class="bg-white p-6 rounded-2xl shadow-sm border border-sage-200 hover:border-sage-500 hover:shadow-md transition cursor-pointer group">
+                    <div class="flex items-center space-x-4">
+                        <div class="w-14 h-14 bg-sage-100 text-sage-700 rounded-2xl flex items-center justify-center text-2xl group-hover:bg-sage-500 group-hover:text-white transition">👤</div>
+                        <div>
+                            <h3 class="text-lg font-bold text-gray-800 group-hover:text-sage-700 transition">個別學生查看模式</h3>
+                            <p class="text-sm text-gray-500 mt-1">從個別學生出發，檢視其所有適用的課堂任務與個人進度。</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 教師管理快捷入口 (僅登入顯示) -->
+            <template x-if="isLoggedIn">
+                <div class="bg-sage-50 border border-sage-200 rounded-2xl p-6">
+                    <h3 class="text-md font-bold text-sage-700 mb-3">👨‍🏫 教師管理中心</h3>
+                    <div class="flex flex-wrap gap-3">
+                        <button @click="currentView = 'manage-students'" class="bg-white text-sage-700 border border-sage-300 px-4 py-2 rounded-xl text-sm font-medium hover:bg-sage-100 transition shadow-sm">
+                            👥 學生管理與分組排序
+                        </button>
+                        <button @click="currentView = 'manage-tasks'" class="bg-white text-sage-700 border border-sage-300 px-4 py-2 rounded-xl text-sm font-medium hover:bg-sage-100 transition shadow-sm">
+                            📚 課堂任務管理
+                        </button>
+                    </div>
+                </div>
+            </template>
+        </section>
+
+        <!-- 2. 指定任務查看頁 (月曆方格卡片排列) -->
+        <section x-show="currentView === 'task-view'" x-cloak x-transition>
+            <div class="flex items-center justify-between mb-6">
+                <button @click="currentView = 'home'" class="text-sm text-sage-700 font-medium hover:underline flex items-center space-x-1">
+                    <span>⬅️ 返回總覽</span>
+                </button>
+                <h2 class="text-lg font-bold text-gray-800">📂 指定任務查看模式</h2>
+            </div>
+
+            <div class="bg-white p-6 rounded-2xl shadow-sm border border-sage-100 mb-6">
+                <label class="block text-sm font-medium text-gray-600 mb-2">選擇要查看的任務：</label>
+                <select x-model="selectedTaskId" class="w-full md:w-1/2 p-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-sage-500 focus:outline-none bg-warm">
+                    <option value="">-- 請選擇任務 --</option>
+                    <template x-for="task in tasks" :key="task.id">
+                        <option :value="task.id" x-text="task.title"></option>
+                    </template>
+                </select>
+
+                <template x-if="currentTask">
+                    <div class="mt-4 pt-4 border-t border-gray-100">
+                        <p class="text-sm text-gray-600" x-text="currentTask.description || '無詳細說明'"></p>
+                        <div class="flex flex-wrap gap-4 mt-3 text-sm text-gray-500">
+                            <span>📅 建立日期：<strong x-text="currentTask.createdAt"></strong></span>
+                            <span>⏳ 期限：<strong x-text="currentTask.dueDate || '無期限'"></strong></span>
+                        </div>
+                        <!-- 統計數據 -->
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
+                            <div class="bg-sage-50 p-3 rounded-xl text-center">
+                                <span class="text-xs text-gray-500">適用人數</span>
+                                <p class="text-lg font-bold text-sage-700" x-text="currentTaskStats.total">0</p>
+                            </div>
+                            <div class="bg-emerald-50 p-3 rounded-xl text-center">
+                                <span class="text-xs text-emerald-600">已完成</span>
+                                <p class="text-lg font-bold text-emerald-700" x-text="currentTaskStats.completed">0</p>
+                            </div>
+                            <div class="bg-amber-50 p-3 rounded-xl text-center">
+                                <span class="text-xs text-amber-600">未完成</span>
+                                <p class="text-lg font-bold text-amber-700" x-text="currentTaskStats.pending">0</p>
+                            </div>
+                            <div class="bg-blue-50 p-3 rounded-xl text-center">
+                                <span class="text-xs text-blue-600">完成率</span>
+                                <p class="text-lg font-bold text-blue-700" x-text="currentTaskStats.rate + '%'">0%</p>
+                            </div>
+                        </div>
+                    </div>
+                </template>
+            </div>
+
+            <!-- 月曆方格卡片排列區塊 -->
+            <template x-if="selectedTaskId">
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-sage-100">
+                    <div class="flex items-center justify-between mb-4 pb-2 border-b border-gray-100">
+                        <span class="font-bold text-sage-700 text-base">學生任務狀態一覽 (點擊方格即可切換狀態)</span>
+                        <span class="text-xs text-gray-400">💡 方形卡片依序向右排列，滿版自動換行</span>
+                    </div>
+                    
+                    <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+                        <template x-for="stu in currentTaskStudents" :key="stu.id">
+                            <div @click="toggleStatus(stu.id, selectedTaskId)" 
+                                 class="p-4 rounded-2xl border transition cursor-pointer flex flex-col justify-between shadow-sm select-none"
+                                 :class="getStatus(stu.id, selectedTaskId) ? 'bg-emerald-50/80 border-emerald-300 text-emerald-900 hover:bg-emerald-100' : 'bg-warm border-amber-200 text-gray-800 hover:bg-amber-50/50'">
+                                <div class="flex items-start justify-between">
+                                    <span class="text-xs font-medium px-2 py-0.5 rounded-full" 
+                                          :class="getStatus(stu.id, selectedTaskId) ? 'bg-emerald-200/60 text-emerald-800' : 'bg-amber-100 text-amber-800'"
+                                          x-text="stu.className || '一般'"></span>
+                                    <input type="checkbox" 
+                                           :checked="getStatus(stu.id, selectedTaskId)" 
+                                           @click.stop="toggleStatus(stu.id, selectedTaskId)"
+                                           class="w-5 h-5 text-sage-600 rounded border-gray-300 focus:ring-sage-500 cursor-pointer">
+                                </div>
+                                <div class="mt-3">
+                                    <p class="font-bold text-base truncate" x-text="stu.name"></p>
+                                    <p class="text-xs mt-1 font-medium flex items-center space-x-1" 
+                                       :class="getStatus(stu.id, selectedTaskId) ? 'text-emerald-700' : 'text-amber-700'">
+                                        <span x-text="getStatus(stu.id, selectedTaskId) ? '✅ 已完成' : '⏳ 待完成'"></span>
+                                    </p>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+            </template>
+        </section>
+
+        <!-- 3. 個別學生查看頁 -->
+        <section x-show="currentView === 'student-view'" x-cloak x-transition>
+            <div class="flex items-center justify-between mb-6">
+                <button @click="currentView = 'home'" class="text-sm text-sage-700 font-medium hover:underline flex items-center space-x-1">
+                    <span>⬅️ 返回總覽</span>
+                </button>
+                <h2 class="text-lg font-bold text-gray-800">👤 個別學生查看模式</h2>
+            </div>
+
+            <div class="bg-white p-6 rounded-2xl shadow-sm border border-sage-100 mb-6">
+                <label class="block text-sm font-medium text-gray-600 mb-2">選擇學生：</label>
+                <select x-model="selectedStudentId" class="w-full md:w-1/2 p-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-sage-500 focus:outline-none bg-warm">
+                    <option value="">-- 請選擇學生 --</option>
+                    <template x-for="stu in sortedStudents" :key="stu.id">
+                        <option :value="stu.id" x-text="stu.name + ' (' + (stu.className || '未分班') + ')'"></option>
+                    </template>
+                </select>
+
+                <template x-if="currentStudent">
+                    <div class="mt-4 pt-4 border-t border-gray-100">
+                        <div class="flex flex-wrap gap-4 text-sm text-gray-600 mb-3">
+                            <span>班級：<strong x-text="currentStudent.className || '—'"></strong></span>
+                            <span>組別：<strong x-text="currentStudent.group || '—'"></strong></span>
+                        </div>
+                        <!-- 統計數據 -->
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                            <div class="bg-sage-50 p-3 rounded-xl text-center">
+                                <span class="text-xs text-gray-500">適用任務總數</span>
+                                <p class="text-lg font-bold text-sage-700" x-text="currentStudentStats.total">0</p>
+                            </div>
+                            <div class="bg-emerald-50 p-3 rounded-xl text-center">
+                                <span class="text-xs text-emerald-600">已完成</span>
+                                <p class="text-lg font-bold text-emerald-700" x-text="currentStudentStats.completed">0</p>
+                            </div>
+                            <div class="bg-amber-50 p-3 rounded-xl text-center">
+                                <span class="text-xs text-amber-600">待完成</span>
+                                <p class="text-lg font-bold text-amber-700" x-text="currentStudentStats.pending">0</p>
+                            </div>
+                            <div class="bg-blue-50 p-3 rounded-xl text-center">
+                                <span class="text-xs text-blue-600">個人完成率</span>
+                                <p class="text-lg font-bold text-blue-700" x-text="currentStudentStats.rate">0%</p>
+                            </div>
+                        </div>
+                    </div>
+                </template>
+            </div>
+
+            <!-- 學生任務清單 -->
+            <template x-if="selectedStudentId">
+                <div class="bg-white rounded-2xl shadow-sm border border-sage-100 overflow-hidden">
+                    <div class="px-6 py-4 bg-sage-50 border-b border-sage-100 font-bold text-sage-700">該學生的適用任務與狀態</div>
+                    <div class="divide-y divide-gray-100">
+                        <template x-for="task in currentStudentTasks" :key="task.id">
+                            <div class="px-6 py-4 flex items-center justify-between hover:bg-warm transition">
+                                <div>
+                                    <span class="font-medium text-gray-800" x-text="task.title"></span>
+                                    <p class="text-xs text-gray-400 mt-0.5" x-text="'期限: ' + (task.dueDate || '無期限')"></p>
+                                </div>
+                                <label class="flex items-center space-x-3 cursor-pointer select-none">
+                                    <input type="checkbox" 
+                                           :checked="getStatus(selectedStudentId, task.id)" 
+                                           @change="toggleStatus(selectedStudentId, task.id)"
+                                           class="w-5 h-5 text-sage-600 rounded border-gray-300 focus:ring-sage-500">
+                                    <span class="text-sm font-medium" :class="getStatus(selectedStudentId, task.id) ? 'text-emerald-600' : 'text-amber-600'" 
+                                          x-text="getStatus(selectedStudentId, task.id) ? '已完成' : '待完成'"></span>
+                                </label>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+            </template>
+        </section>
+
+        <!-- 4. 學生管理頁 (教師專用 - 相同編號排列並由小到大排序) -->
+        <section x-show="currentView === 'manage-students'" x-cloak x-transition>
+            <div class="flex items-center justify-between mb-6">
+                <button @click="currentView = 'home'" class="text-sm text-sage-700 font-medium hover:underline flex items-center space-x-1">
+                    <span>⬅️ 返回總覽</span>
+                </button>
+                <h2 class="text-lg font-bold text-gray-800">👥 學生管理與分組排序</h2>
+            </div>
+
+            <!-- 新增學生表單 -->
+            <div class="bg-white p-6 rounded-2xl shadow-sm border border-sage-100 mb-6">
+                <h3 class="text-md font-bold text-sage-700 mb-3">新增學生</h3>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+                    <input type="text" x-model="newStudent.name" placeholder="學生姓名 (必填)" class="p-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-sage-500 focus:outline-none">
+                    <input type="text" x-model="newStudent.className" placeholder="班級 / 編號 (例: 七年一班)" class="p-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-sage-500 focus:outline-none">
+                    <input type="text" x-model="newStudent.group" placeholder="組別 (例: A組)" class="p-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-sage-500 focus:outline-none">
+                </div>
+                <button @click="addStudent()" class="bg-sage-600 text-white px-5 py-2.5 rounded-xl text-sm font-medium hover:bg-sage-700 transition shadow-sm">
+                    新增學生
+                </button>
+            </div>
+
+            <!-- 學生列表 (已依相同編號排序) -->
+            <div class="bg-white rounded-2xl shadow-sm border border-sage-100 overflow-hidden">
+                <div class="px-6 py-4 bg-sage-50 border-b border-sage-100 flex justify-between items-center">
+                    <span class="font-bold text-sage-700">學生清單 (依班級編號與名稱由小到大自動排序)</span>
+                    <span class="text-xs text-gray-500">共 <span x-text="students.length"></span> 位學生</span>
+                </div>
+                <div class="divide-y divide-gray-100">
+                    <template x-for="stu in sortedStudents" :key="stu.id">
+                        <div class="px-6 py-4 flex items-center justify-between hover:bg-warm transition">
+                            <div>
+                                <span class="font-medium text-gray-800 text-base" x-text="stu.name"></span>
+                                <span class="text-xs text-sage-700 bg-sage-50 border border-sage-200 px-2.5 py-0.5 rounded-full ml-3" x-text="stu.className || '未設定班級'"></span>
+                                <span class="text-xs text-gray-500 ml-2" x-text="stu.group ? '(' + stu.group + ')' : ''"></span>
+                            </div>
+                            <button @click="deleteStudent(stu.id)" class="text-rose-600 hover:text-rose-800 text-sm font-medium px-3 py-1 rounded-lg hover:bg-rose-50 transition">
+                                刪除
+                            </button>
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </section>
+
+        <!-- 5. 任務管理頁 (教師專用) -->
+        <section x-show="currentView === 'manage-tasks'" x-cloak x-transition>
+            <div class="flex items-center justify-between mb-6">
+                <button @click="currentView = 'home'" class="text-sm text-sage-700 font-medium hover:underline flex items-center space-x-1">
+                    <span>⬅️ 返回總覽</span>
+                </button>
+                <h2 class="text-lg font-bold text-gray-800">📚 課堂任務管理</h2>
+            </div>
+
+            <!-- 新增任務表單 -->
+            <div class="bg-white p-6 rounded-2xl shadow-sm border border-sage-100 mb-6">
+                <h3 class="text-md font-bold text-sage-700 mb-3">新增課堂任務</h3>
+                <div class="space-y-3 mb-4">
+                    <input type="text" x-model="newTask.title" placeholder="任務名稱 (必填)" class="w-full p-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-sage-500 focus:outline-none">
+                    <textarea x-model="newTask.description" placeholder="任務說明 (選填)" class="w-full p-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-sage-500 focus:outline-none"></textarea>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-xs text-gray-500 mb-1">任務期限 (選填)</label>
+                            <input type="date" x-model="newTask.dueDate" class="w-full p-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-sage-500 focus:outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-500 mb-1">適用對象</label>
+                            <select x-model="newTask.targetType" class="w-full p-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-sage-500 focus:outline-none bg-warm">
+                                <option value="all">全班所有學生</option>
+                                <option value="specific">指定特定學生</option>
+                            </select>
+                        </div>
+                    </div>
+                    <!-- 若選擇指定學生 -->
+                    <template x-if="newTask.targetType === 'specific'">
+                        <div class="bg-sage-50 p-4 rounded-xl">
+                            <label class="block text-xs font-bold text-sage-700 mb-2">勾選適用學生：</label>
+                            <div class="grid grid-cols-2 md:grid-cols-3 gap-2">
+                                <template x-for="stu in sortedStudents" :key="stu.id">
+                                    <label class="flex items-center space-x-2 text-sm">
+                                        <input type="checkbox" :value="stu.id" x-model="newTask.targetStudentIds" class="rounded text-sage-600 focus:ring-sage-500">
+                                        <span x-text="stu.name + ' (' + (stu.className || '') + ')'"></span>
+                                    </label>
+                                </template>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+                <button @click="addTask()" class="bg-sage-600 text-white px-5 py-2.5 rounded-xl text-sm font-medium hover:bg-sage-700 transition shadow-sm">
+                    建立任務
+                </button>
+            </div>
+
+            <!-- 任務列表 -->
+            <div class="bg-white rounded-2xl shadow-sm border border-sage-100 overflow-hidden">
+                <div class="px-6 py-4 bg-sage-50 border-b border-sage-100 font-bold text-sage-700">任務清單</div>
+                <div class="divide-y divide-gray-100">
+                    <template x-for="task in tasks" :key="task.id">
+                        <div class="px-6 py-4 flex items-center justify-between hover:bg-warm transition">
+                            <div>
+                                <span class="font-medium text-gray-800 text-base" x-text="task.title"></span>
+                                <p class="text-xs text-gray-500 mt-0.5" x-text="'建立: ' + task.createdAt + ' | 期限: ' + (task.dueDate || '無')"></p>
+                            </div>
+                            <button @click="deleteTask(task.id)" class="text-rose-600 hover:text-rose-800 text-sm font-medium px-3 py-1 rounded-lg hover:bg-rose-50 transition">
+                                刪除
+                            </button>
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- 教師登入 Modal -->
+    <div x-show="loginModal" x-cloak class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" x-transition>
+        <div class="bg-white p-6 rounded-2xl max-w-sm w-full shadow-xl">
+            <h3 class="text-lg font-bold text-gray-800 mb-4">教師登入驗證</h3>
+            <p class="text-xs text-gray-500 mb-4">為保護學生資料，請輸入教師專屬管理密碼（預設測試密碼：<code class="bg-gray-100 px-1 py-0.5 rounded text-sage-700">teacher123</code>）</p>
+            <input type="password" x-model="passwordInput" placeholder="請輸入管理密碼" class="w-full p-3 rounded-xl border border-gray-300 mb-4 focus:ring-2 focus:ring-sage-500 focus:outline-none">
+            <div class="flex justify-end space-x-2">
+                <button @click="loginModal = false; passwordInput = ''" class="px-4 py-2 rounded-xl text-sm text-gray-600 hover:bg-gray-100 transition">取消</button>
+                <button @click="verifyLogin()" class="px-4 py-2 rounded-xl text-sm bg-sage-600 text-white hover:bg-sage-700 transition">登入</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 頁尾 -->
+    <footer class="bg-white border-t border-sage-100 py-4 mt-auto text-center text-xs text-gray-400">
+        任務小幫手 Task Assistant &copy; 2026 國中資源班專用互動管理系統
+    </footer>
+
+    <!-- 系統主邏輯 -->
+    <script>
+        function taskApp() {
+            return {
+                currentView: 'home',
+                isLoggedIn: false,
+                loginModal: false,
+                passwordInput: '',
+                
+                toast: { show: false, message: '', icon: '✅' },
+
+                // 初始測試資料
+                students: [
+                    { id: 'stu_1', name: '王小明', className: '七年一班', group: 'A組' },
+                    { id: 'stu_2', name: '李小華', className: '七年一班', group: 'A組' },
+                    { id: 'stu_3', name: '張小美', className: '七年二班', group: 'B組' },
+                    { id: 'stu_4', name: '陳大同', className: '八年三班', group: 'B組' }
+                ],
+                tasks: [
+                    { id: 'task_1', title: '國文第一課單字拼寫練習', description: '請利用語音工具完成 p.12-15。', createdAt: '2026-10-15', dueDate: '2026-10-20', targetType: 'all', targetStudentIds: [] },
+                    { id: 'task_2', title: '數學一元一次方程式挑戰', description: '完成學習單基礎 10 題。', createdAt: '2026-10-15', dueDate: '2026-10-22', targetType: 'all', targetStudentIds: [] }
+                ],
+                // 狀態紀錄：key 為 `${studentId}_${taskId}`, value 為 boolean
+                statuses: {
+                    'stu_1_task_1': true,
+                    'stu_2_task_1': false,
+                    'stu_1_task_2': false
+                },
+
+                // 新增學生暫存
+                newStudent: { name: '', className: '', group: '' },
+                // 新增任務暫存
+                newTask: { title: '', description: '', dueDate: '', targetType: 'all', targetStudentIds: [] },
+
+                // 檢視模式選擇狀態
+                selectedTaskId: '',
+                selectedStudentId: '',
+
+                init() {
+                    const savedStudents = localStorage.getItem('ta_students');
+                    const savedTasks = localStorage.getItem('ta_tasks');
+                    const savedStatuses = localStorage.getItem('ta_statuses');
+                    const savedLogin = localStorage.getItem('ta_isLoggedIn');
+
+                    if (savedStudents) this.students = JSON.parse(savedStudents);
+                    if (savedTasks) this.tasks = JSON.parse(savedTasks);
+                    if (savedStatuses) this.statuses = JSON.parse(savedStatuses);
+                    if (savedLogin) this.isLoggedIn = JSON.parse(savedLogin);
+                },
+
+                saveData() {
+                    localStorage.setItem('ta_students', JSON.stringify(this.students));
+                    localStorage.setItem('ta_tasks', JSON.stringify(this.tasks));
+                    localStorage.setItem('ta_statuses', JSON.stringify(this.statuses));
+                    localStorage.setItem('ta_isLoggedIn', JSON.stringify(this.isLoggedIn));
+                },
+
+                showToast(message, icon = '✅') {
+                    this.toast.message = message;
+                    this.toast.icon = icon;
+                    this.toast.show = true;
+                    setTimeout(() => { this.toast.show = false; }, 2000);
+                },
+
+                verifyLogin() {
+                    if (this.passwordInput === 'teacher123') {
+                        this.isLoggedIn = true;
+                        this.loginModal = false;
+                        this.passwordInput = '';
+                        this.saveData();
+                        this.showToast('教師登入成功！');
+                    } else {
+                        alert('密碼錯誤！測試密碼為 teacher123');
+                    }
+                },
+
+                logout() {
+                    this.isLoggedIn = false;
+                    this.saveData();
+                    this.showToast('已登出教師模式', '👋');
+                },
+
+                getStatus(studentId, taskId) {
+                    return !!this.statuses[`${studentId}_${taskId}`];
+                },
+
+                toggleStatus(studentId, taskId) {
+                    const key = `${studentId}_${taskId}`;
+                    this.statuses[key] = !this.statuses[key];
+                    this.saveData();
+                    this.showToast('完成狀態已即時儲存！');
+                },
+
+                addStudent() {
+                    if (!this.newStudent.name.trim()) {
+                        alert('請輸入學生姓名');
+                        return;
+                    }
+                    const newId = 'stu_' + Date.now();
+                    this.students.push({
+                        id: newId,
+                        name: this.newStudent.name,
+                        className: this.newStudent.className || '未設定',
+                        group: this.newStudent.group || '未分組'
+                    });
+                    this.newStudent = { name: '', className: '', group: '' };
+                    this.saveData();
+                    this.showToast('學生新增成功！');
+                },
+
+                deleteStudent(id) {
+                    if (confirm('確定要刪除這位學生嗎？相關完成紀錄將一併清除。')) {
+                        this.students = this.students.filter(s => s.id !== id);
+                        Object.keys(this.statuses).forEach(k => {
+                            if (k.startsWith(id + '_')) delete this.statuses[k];
+                        });
+                        this.saveData();
+                        this.showToast('學生已刪除', '🗑️');
+                    }
+                },
+
+                addTask() {
+                    if (!this.newTask.title.trim()) {
+                        alert('請輸入任務名稱');
+                        return;
+                    }
+                    const newId = 'task_' + Date.now();
+                    this.tasks.push({
+                        id: newId,
+                        title: this.newTask.title,
+                        description: this.newTask.description,
+                        createdAt: new Date().toISOString().split('T')[0],
+                        dueDate: this.newTask.dueDate,
+                        targetType: this.newTask.targetType,
+                        targetStudentIds: [...this.newTask.targetStudentIds]
+                    });
+                    this.newTask = { title: '', description: '', dueDate: '', targetType: 'all', targetStudentIds: [] };
+                    this.saveData();
+                    this.showToast('任務建立成功！');
+                },
+
+                deleteTask(id) {
+                    if (confirm('確定要刪除這項任務嗎？')) {
+                        this.tasks = this.tasks.filter(t => t.id !== id);
+                        Object.keys(this.statuses).forEach(k => {
+                            if (k.endsWith('_' + id)) delete this.statuses[k];
+                        });
+                        this.saveData();
+                        this.showToast('任務已刪除', '🗑️');
+                    }
+                },
+
+                // 核心排序：相同班級編號排列在一起，並在組內依序由小到大排序
+                get sortedStudents() {
+                    return [...this.students].sort((a, b) => {
+                        const classA = a.className || '';
+                        const classB = b.className || '';
+                        if (classA !== classB) {
+                            return classA.localeCompare(classB, 'zh-Hant');
+                        }
+                        return a.name.localeCompare(b.name, 'zh-Hant');
+                    });
+                },
+
+                get currentTask() {
+                    return this.tasks.find(t => t.id === this.selectedTaskId);
+                },
+
+                get currentTaskStudents() {
+                    if (!this.currentTask) return [];
+                    const list = this.currentTask.targetType === 'all' 
+                        ? this.sortedStudents 
+                        : this.sortedStudents.filter(s => this.currentTask.targetStudentIds.includes(s.id));
+                    return list;
+                },
+
+                get currentTaskStats() {
+                    const students = this.currentTaskStudents;
+                    const total = students.length;
+                    if (total === 0) return { total: 0, completed: 0, pending: 0, rate: '—' };
+                    let completed = 0;
+                    students.forEach(s => {
+                        if (this.getStatus(s.id, this.selectedTaskId)) completed++;
+                    });
+                    const pending = total - completed;
+                    const rate = Math.round((completed / total) * 100);
+                    return { total, completed, pending, rate };
+                },
+
+                get currentStudent() {
+                    return this.students.find(s => s.id === this.selectedStudentId);
+                },
+
+                get currentStudentTasks() {
+                    if (!this.currentStudent) return [];
+                    return this.tasks.filter(t => {
+                        if (t.targetType === 'all') return true;
+                        return t.targetStudentIds.includes(this.selectedStudentId);
+                    });
+                },
+
+                get currentStudentStats() {
+                    const tasks = this.currentStudentTasks;
+                    const total = tasks.length;
+                    if (total === 0) return { total: 0, completed: 0, pending: 0, rate: '—' };
+                    let completed = 0;
+                    tasks.forEach(t => {
+                        if (this.getStatus(this.selectedStudentId, t.id)) completed++;
+                    });
+                    const pending = total - completed;
+                    const rate = Math.round((completed / total) * 100) + '%';
+                    return { total, completed, pending, rate };
+                },
+
+                get totalPendingCount() {
+                    let count = 0;
+                    this.tasks.forEach(t => {
+                        const targetStudents = t.targetType === 'all' ? this.students : this.students.filter(s => t.targetStudentIds.includes(s.id));
+                        targetStudents.forEach(s => {
+                            if (!this.getStatus(s.id, t.id)) count++;
+                        });
+                    });
+                    return count;
+                },
+
+                get overallCompletionRate() {
+                    let totalPairs = 0;
+                    let completedPairs = 0;
+                    this.tasks.forEach(t => {
+                        const targetStudents = t.targetType === 'all' ? this.students : this.students.filter(s => t.targetStudentIds.includes(s.id));
+                        targetStudents.forEach(s => {
+                            totalPairs++;
+                            if (this.getStatus(s.id, t.id)) completedPairs++;
+                        });
+                    });
+                    if (totalPairs === 0) return 0;
+                    return Math.round((completedPairs / totalPairs) * 100);
+                }
+            }
+        }
+    </script>
+</body>
+</html>
